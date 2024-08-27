@@ -267,13 +267,14 @@ local function display_random_image()
 end
 
 local stop_flag = false
-local images = get_images()             -- Get the list of images
+local images = get_images()
 if #images > 0 then
     drawImage(images[1])
     local timer = event.timer(10, display_random_image, math.huge)
     while true do
         local name,addr,char,key,player = event.pull("key_down")
         if key == 0x10 then
+            event.cancel(timer)
             break
         end
     end
