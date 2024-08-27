@@ -1,18 +1,20 @@
+local address_rsio_ext_control
+local rsio_nuclear_control
+
 local computer = require('computer')
 local component = require('component')
-local JSON = (loadfile "JSON.lua")()
-local itemConfig = io.open("config.json", "r")
+
+
 local redstone1 = component.proxy("XXXXX") -- 1号红石io为控制反应堆
 local redstone2 = component.proxy("XXXXX") -- 2号红石io为控制全局开关
-local transposer = component.transposer
-local reactor_chamber = component.reactor_chamber
+
 -- 北:2
--- x东:5
+-- 东:5
 -- 西:4
--- z南:3
+-- 南:3
 local sourceBoxSide = 4 -- 输入箱子
 local reactorChamberSide = 5 -- 核电仓
-local outPutBoxSide = 3 -- 输出箱子e
+local outPutBoxSide = 3 -- 输出箱子
 local outPutDrawerSide = 0 -- 输出抽屉
 local runTime = 0 -- 正常运行时间
 local controlside = 2  --控制红石接收器方向
@@ -35,29 +37,6 @@ local function checkSourceBoxItems(itemName, itemCount)
     else
         return false
     end
-end
-
--- 选择配置文件中的项目
-local function configSelect()
-    print("Please enter config project:")
-    local project = io.read()
-
-    if itemConfig then
-        local ItemConfig_table = JSON:decode(itemConfig:read("*a"))
-
-        if (ItemConfig_table[project]) then
-            itemConfig:close()
-            return ItemConfig_table[project]
-        else
-            print("The project name you entered could not be found.")
-            itemConfig:close()
-            os.exit(0)
-        end
-    else
-        print("config.json not found.")
-        os.exit(0)
-    end
-
 end
 
 -- 停止核电仓
@@ -87,27 +66,6 @@ local function insertItemsIntoReactorChamber(project)
             end
         end
     end
-end
-
--- 核电仓热量检测
-local function checkReactorChamberHeat()
-	x = redstone2.getInput(2);
-	if x > 0 then
-		if (reactor_chamber.getHeat() >= 1000) then
-			os.execute("cls")
-			print("reactorChamber Heat is " .. reactor_chamber.getHeat() .. " >= 1000")
-			stop()
-		elseif (reactor_chamber.getHeat() < 1000) then
-			start()
-			os.execute("cls")
-			print("reactorChamber is Running!")
-		end
-	else 
-		print("主机控制端被关闭，2秒后退出")
-		os.sleep(2)
-		stop()
-		os.exit()
-	end
 end
 
 -- 物品移除核电仓
@@ -189,92 +147,169 @@ local function checkItemDMG(project)
     end
 end
 
--- 核电仓运行时
-local function reactorChamberRunTime(project)
-    os.execute("cls")
-	x = redstone2.getInput(2);
-    print("reactorChamber is Running!")
-    while true do
-		if x > 0 then
-			checkItemDMG(project)
-			checkReactorChamberHeat()
-		else
-			os.sleep(2)
-			os.exit()
-		end
-    end
+-- Reactor configuration
+config = {
+	resource = {
+		{
+			name = "gregtech:gt.360k_Helium_Coolantcell",
+			changeName = -1,
+			dmg = 90,
+			count = 14,
+			slot = { 3, 6, 9, 10, 15, 22, 26, 29, 33, 40, 45, 46, 49, 52 }
+		},
+		{
+			name = "gregtech:gt.reactorUraniumQuad",
+			changeName = "IC2:reactorUraniumQuaddepleted",
+			dmg = -1,
+			count = 40,
+			slot = {
+				1, 2, 4, 5, 7, 8, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 23, 24, 25, 27, 28, 30, 31, 32, 34, 35, 36, 37,
+				38, 39, 41, 42, 43, 44, 47, 48, 50, 51, 53, 54 }
+		}
+	},
+ 	overheat_threshold = 9000
+}
+
+-- Component list
+local rsio_ext_control = component.proxy(address_rsio_ext_control)
+local rsio_nuclear_control = component.proxy(address_rsio_nuclear_control)
+local transposer = component.transposer
+local reactor_chamber = component.reactor_chamber
+
+-- Component function
+local function checkReactorItem()
+	local discard_list,  = {}
+	local report_idx = 0
+	for i = 1, #config.resource do
+		slots = config.resource[i]
+		for s = 1, #slots do
+			report_idx += 1
+			report[report_idx]
+	end
 end
 
--- 从配置文件启动
-local function startWithConfig()
-    local project = configSelect()
-    local projectLenth = #project
-    local whileFlag = true
-    local isOK = 0
-	
-    while whileFlag do
-	x = redstone2.getInput(2);
-		if x > 0 then
-			isOK = 0
-			-- 判断并输出原材料箱中原材料是否满足
-			for i = 1, projectLenth do
-				if checkSourceBoxItems(project[i].name, project[i].count) then
-					print(project[i].name .. "-------is ok")
-					isOK = isOK + 1
-				else
-					print(project[i].name .. "-------is not enough")
-				end
-			end
+local function redstoneInputAny(rsio, level)
+	if type(level) ~= "number" then
+		level = 15
+	end
+	input = rsio.getInput()
+	for i = 0, 5 do
+		if input[i] >= level then
+			return true
+		end
+	end
+	return false
+end
 
-			if isOK == projectLenth then
-				whileFlag = false
-				-- 向核电仓中转移原材料
-				local status, retval = pcall(insertItemsIntoReactorChamber, project)
-				-- 启动强冷核电
-				if status then
-					reactorChamberRunTime(project)
-				else
-					print(retval)
-				end
+local function redstoneOutputAll(rsio, level)
+	if type(level) ~= "number" then
+		level = 1
+	end
+	local output = {}
+	for i = 0, 5 do
+		output[i] = level
+	end
+	rsio.setOutput(output)
+end
+
+-- Display help info
+local function display_info()
+	os.execute("cls")
+	print("==========================")
+	print("  Vaccum Nuclear Reactor")
+	print("  Version:     1.0")
+	print("  Author:      Kerel")
+	print("==========================")
+end
+
+-- Register keyboard control
+local function register_listener()
+end
+
+local function unregister_listener()
+end
+
+-- Nuclear reactor control signal structure
+local control_signal = {
+	-- scram
+	start_success = false,
+	heat = 0,
+}
+
+local function update_control_signal()
+	control_signal.heat = reactor_chamber.getHeat()
+end
+
+-- Nuclear control FSM
+local reactor_control_fsm = {
+	init_state =
+		function()
+			return "off_state"
+		end,
+	off_state =
+		function()
+			if control_signal.start then
+				return "start_state"
 			else
-				for i = 10, 1, -1 do
-					print("Recheck after " .. i .. " seconds")
-					os.sleep(1)
-				end
-				os.execute("cls")
+				return "off_state"
 			end
-		else
-			print("主机控制端未启动，5秒后退出")
-			os.sleep(5)
-			os.exit()
-		end
-    end
-end
+		end,
+	start_state = 
+		function()
+			if control_signal.start_success then
+				return "on_state"
+			else
+				return "failure_state"
+			end
+		end,
+	on_state = 
+		function()
+		
+		end,
+	failure_state = 0,
+	change_coolant_state = 
+		function()
+		end,
+	change_fuel_state = 
+		function()
+		end,
+	
+}
+local reactor_control_action = {
+	init_state = 
+		function()
+		end,
+	start_state = 
+		function()
+			checkReactorItem()
+			checkInputItem()
+			insertItem()
+			if COND then
+				control_signal.start_success = true
+			else
+				control_signal.start_success = false
+			end
+		end,
+	on_state = 
+		function()
+			checkReactorItem()
+			
+}
 
--- 直接启动
-local function justStart()
-    local project = configSelect()
-    reactorChamberRunTime(project)
-end
-
-local function startSelect()
-    stop()
-    print("Please select start with config(0) or just start(1):")
+-- Main control logic for vaccum nuclear reactor
+local function main()
+	display_info()
+	register_listener()
+	
+	local current_state = "init_state"
     while true do
-        local select = io.read()
-        if select == "0" then
-            startWithConfig()
-            break
-        elseif select == "1" then
-            justStart()
-            break
-        elseif select == "-1" then
-            os.exit(0)
-        else
-            print("Please enter [0]:start with config or [1]:just start:")
-        end
-
-    end
+		update_control_signal()
+		next_state = reactor_control_fsm[current_state]()
+		reactor_control_action[current_state]()
+		current_state = next_state
+		os.sleep(0.05)
+	end
+	unregister_listener()
 end
 
-startSelect()
+main()
