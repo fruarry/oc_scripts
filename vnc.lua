@@ -1,100 +1,7 @@
 local address_rsio_ext_control
-local rsio_nuclear_control
 
 local computer = require('computer')
 local component = require('component')
-
-
-local redstone1 = component.proxy("XXXXX") -- 1号红石io为控制反应堆
-local redstone2 = component.proxy("XXXXX") -- 2号红石io为控制全局开关
-
--- 北:2
--- 东:5
--- 西:4
--- 南:3
-local sourceBoxSide = 4 -- 输入箱子
-local reactorChamberSide = 5 -- 核电仓
-local outPutBoxSide = 3 -- 输出箱子
-local outPutDrawerSide = 0 -- 输出抽屉
-local runTime = 0 -- 正常运行时间
-local controlside = 2  --控制红石接收器方向
-
--- 检查原材料箱中原材料数量
-local function checkSourceBoxItems(itemName, itemCount)
-    local itemSum = 0
-    local sourceBoxitemList = transposer.getAllStacks(sourceBoxSide).getAll()
-
-    for index, item in pairs(sourceBoxitemList) do
-        if item.name then
-            if item.name == itemName then
-                itemSum = itemSum + item.size
-            end
-        end
-    end
-
-    if itemSum >= itemCount then
-        return true
-    else
-        return false
-    end
-end
-
--- 向核电仓中转移原材料
-local function insertItemsIntoReactorChamber(project)
-    local sourceBoxitemList = transposer.getAllStacks(sourceBoxSide).getAll()
-    local reactorChamber = transposer.getAllStacks(reactorChamberSide)
-    local reactorChamberLenth = reactorChamber.count()
-    local projectLenth = #project
-
-    for i = 1, projectLenth do
-        for indexJ, j in pairs(project[i].slot) do
-            for index, item in pairs(sourceBoxitemList) do
-                if item.name == project[i].name then
-                    transposer.transferItem(sourceBoxSide, reactorChamberSide, 1, index + 1, j)
-                end
-            end
-        end
-    end
-end
-
--- 物品移除核电仓
-local function remove(removeSlot, removeSide)
-    while true do
-        if transposer.transferItem(reactorChamberSide, removeSide, 1, removeSlot) == 0 then
-            print("outPutBox is Full!")
-            for i = 10, 1, -1 do
-                print("Recheck after " .. i .. " seconds")
-                os.sleep(1)
-            end
-            os.execute("cls")
-        else
-            break
-        end
-    end
-end
-
--- 物品移入核电仓
-local function insert(sinkSlot, insertItemName)
-    while true do
-        local sourceBoxitemList = transposer.getAllStacks(sourceBoxSide).getAll()
-        if checkSourceBoxItems(insertItemName, 1) then
-            for index, item in pairs(sourceBoxitemList) do
-                if item.name == insertItemName then
-                    transposer.transferItem(sourceBoxSide, reactorChamberSide, 1, index + 1, sinkSlot)
-                    break
-                end
-            end
-            break
-        else
-            print(insertItemName .. "-------is not enough")
-            for i = 10, 1, -1 do
-                print("Recheck after " .. i .. " seconds")
-                os.sleep(1)
-            end
-            os.execute("cls")
-        end
-    end
-end
 
 
 -- Reactor configuration
@@ -117,6 +24,8 @@ config = {
 	transposer_side_reactor = xx,
 	transposer_side_sink = xx,
 	transposer_side_source = xx,
+	reactor_status_report_interval = 10,
+	reactor_watchdog_interval = 0.5
 }
 
 -- Error code
@@ -246,8 +155,16 @@ local function redstoneOutputAll(rsio, level)
 	rsio.setOutput(output)
 end
 
--- Display help info
-local function display_info()
+-- Display
+local function display(msg)
+	print("> " .. msg)
+end
+
+local function display_error(msg)
+	display("ERROR: " .. msg)
+end
+
+local function display_header()
 	os.execute("cls")
 	print("==========================")
 	print("  Vaccum Nuclear Reactor")
@@ -257,7 +174,31 @@ local function display_info()
 end
 
 -- Register keyboard control
+local function key_down_handler(eventName, keyboardAddress, char, code, playerName)
+	if code == 0x10 then
+		scram = true
+	end
+end
+
+local function reactor_status_report()
+	local producesEnergy = reactor_chamber.producesEnergy()
+	local EUOutput = reactor_chamber.getReactorEUOutput()
+	local heat = reactor_chamber.getHeat()
+	display(" Energy: " .. 
+end
+
+local function reactor_watchdog()
+	local heat = reactor_chamber.getHeat()
+	if heat >= config.overheat_threshold then
+		scram = true
+	end
+end
+
+local listener = {}
 local function register_listener()
+	table.insert(listener, event.register("key_down", key_down_handler))
+	table.insert(lintener, event.timer(reactor_watchdog_interval, reactor_watchdog)
+	table.insert(lintener, event.timer(reactor_status_report_interval, reactor_status_report)
 end
 
 local function unregister_listener()
@@ -265,15 +206,13 @@ end
 
 -- Reactor structure
 local reactor_state = {
-	error_code = 0,
+	start_error_code = 0,
 			
 	-- scram
 	ext_start = false,
 	start_success = false,
-	heat = 0,
 
 	item_update = false,
-	item_update_success = false,
 	item_export = {},
 	item_import = {}
 }
@@ -282,9 +221,6 @@ local function update_reactor_state()
 	-- Check external control
 	reactor_state.ext_start = redstoneInputAny(rsio_ext_control)
 	
-	-- Check heaet
-	reactor_state.heat = reactor_chamber.getHeat()
-
 	-- Check item
 	item_export, item_import = checkReactorItem()
 	local next = next
@@ -315,53 +251,74 @@ local reactor_control_fsm = {
 		end,
 	start_state = 
 		function()
-			if reactor_state.error_code ~= 0 then
-				return "error_state"
+			if reactor_state.start_error_code ~= 0 then
+				return "start_error_state"
+			else
+				return "on_state"
+			end
+		end
+	on_state = 
+		function()
+			if not reactor_state.ext_start then
+				return "off_state"
+			elseif reactor_state.item_update then
+				return "start_state"
 			else
 				return "on_state"
 			end
 		end,
-	on_state = 
+	start_error_state = 
 		function()
-			if reactor_state.error_code ~= 0 then
-				return "error_state"
-		end,
-	error_state = 
-		function()
+			if 
 		end
 }
 local reactor_control_action = {
 	init_state = 
 		function()
+			display("Initializing...")
+			update_reactor_state()
 		end,
 	start_state = 
 		function()
+			display("Reactor stopped. Fuel rod loading...")
+			stopReactor()
 			if reactor_state.item_update then
-				reactor_state.error_code = updateReactorItem(reactor_state.item_export, reactor_state.item_import)
-				if reactor_state.error_code ~= 0 then
+				reactor_state.start_error_code = updateReactorItem(reactor_state.item_export, reactor_state.item_import)
+				if reactor_state.start_error_code ~= 0 then
 					return
 				end
 			end
+			display("Fuel rod loaded. Reactor Starting")
 			startReactor()
-			reactor_state.start_success = true
 		end,
 	on_state = 
 		function()
+			update_reactor_state()
+		end,
+	off_state =
+		function()
+			display("Reactor stopped.")
+			stopReactor()
+		end
+	start_error_state = 
+		function()
+			display_error(error_code[reactor_state.start_error_code])
+			display_error("Retry in 5 seconds...")
+			os.sleep(5)
 		end
 }
 
 -- Main control logic for vaccum nuclear reactor
 local function main()
-	display_info()
+	display_header()
 	register_listener()
 	
 	local current_state = "init_state"
     while true do
-		update_reactor_state()
 		reactor_control_action[current_state]()
 		next_state = reactor_control_fsm[current_state]()
 		current_state = next_state
-		os.sleep(0.5)
+		os.sleep(0.05)
 	end
 	unregister_listener()
 end
