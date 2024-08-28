@@ -152,40 +152,59 @@ config = {
 	resource = {
 		{
 			name = "gregtech:gt.360k_Helium_Coolantcell",
-			changeName = -1,
-			dmg = 90,
-			count = 14,
+			damage = 90,
 			slot = { 3, 6, 9, 10, 15, 22, 26, 29, 33, 40, 45, 46, 49, 52 }
 		},
 		{
 			name = "gregtech:gt.reactorUraniumQuad",
-			changeName = "IC2:reactorUraniumQuaddepleted",
-			dmg = -1,
-			count = 40,
+			damage = -1,
 			slot = {
 				1, 2, 4, 5, 7, 8, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 23, 24, 25, 27, 28, 30, 31, 32, 34, 35, 36, 37,
 				38, 39, 41, 42, 43, 44, 47, 48, 50, 51, 53, 54 }
 		}
 	},
- 	overheat_threshold = 9000
+ 	overheat_threshold = 9000,
+	transposer_side_reactor = xx,
 }
 
 -- Component list
 local rsio_ext_control = component.proxy(address_rsio_ext_control)
-local rsio_nuclear_control = component.proxy(address_rsio_nuclear_control)
-local transposer = component.transposer
-local reactor_chamber = component.reactor_chamber
+local transposer = component.proxy(address_transposer)
+local reactor_chamber = component.proxy(address_reactor_chamber)
 
--- Component function
+-- Generate item report of reactor chamber
 local function checkReactorItem()
-	local discard_list,  = {}
-	local report_idx = 0
-	for i = 1, #config.resource do
-		slots = config.resource[i]
-		for s = 1, #slots do
-			report_idx += 1
-			report[report_idx]
+	local export = {}
+	local import = {}
+	local function exportAppend(slot) table.insert(export, slot) end
+	local function importAppend(name, slot)
+		if import[name] == nil then
+			import[name] = {}
+		end
+		table.insert(import[name], slot)
 	end
+	
+	for i = 1, #config.resource do
+		resourcce = config.resource[i]
+		for s = 1, #resource.slot do
+			slot = resource.slot[s]
+			target = transposer.getStackInSlot(config.transposer_side_reactor, slot)
+			if target == nil then
+				importAppend(resource.name, slot)
+			elseif target.name ~= resource.name then
+				exportAppend(slot)
+				importAppend(resource.name, slot)
+			elseif resource.damage ~= -1 and target.damage >= resource.damage then
+				exportAppend(slot)
+				importAppend(resource.name, slot)
+			end
+		end
+	end
+	return export, import
+end
+
+-- Update reactor chamber items
+local function updateReactorItem()
 end
 
 local function redstoneInputAny(rsio, level)
@@ -229,18 +248,40 @@ end
 local function unregister_listener()
 end
 
--- Nuclear reactor control signal structure
-local control_signal = {
+-- Reactor structure
+local reactor_state = {
 	-- scram
+	ext_start = false,
 	start_success = false,
 	heat = 0,
+
+	item_update = false,
+	item_export = {},
+	item_import = {},
 }
 
-local function update_control_signal()
-	control_signal.heat = reactor_chamber.getHeat()
+local function update_reactor_state()
+	-- Check external control
+	reactor_state.ext_start = redstoneInputAny(rsio_ext_control)
+	
+	-- Check heaet
+	reactor_state.heat = reactor_chamber.getHeat()
+
+	-- Check item
+	item_export, item_import = checkReactorItem()
+	local next = next
+	if next(item_export) == nil and next(item_import) == nil then
+		reactor_state.item_update = false
+		reactor_state.item_export = {}
+		reactor_state.item_import = {}
+	else
+		reactor_state.item_update = true
+		reactor_state.item_export = item_export
+		reactor_state.item_import = item_import
+	end
 end
 
--- Nuclear control FSM
+-- Reactor control FSM
 local reactor_control_fsm = {
 	init_state =
 		function()
@@ -248,7 +289,7 @@ local reactor_control_fsm = {
 		end,
 	off_state =
 		function()
-			if control_signal.start then
+			if reactor_state.ext_start then
 				return "start_state"
 			else
 				return "off_state"
@@ -256,7 +297,7 @@ local reactor_control_fsm = {
 		end,
 	start_state = 
 		function()
-			if control_signal.start_success then
+			if reactor_state.start_success then
 				return "on_state"
 			else
 				return "failure_state"
@@ -267,13 +308,6 @@ local reactor_control_fsm = {
 		
 		end,
 	failure_state = 0,
-	change_coolant_state = 
-		function()
-		end,
-	change_fuel_state = 
-		function()
-		end,
-	
 }
 local reactor_control_action = {
 	init_state = 
@@ -281,18 +315,18 @@ local reactor_control_action = {
 		end,
 	start_state = 
 		function()
-			checkReactorItem()
-			checkInputItem()
-			insertItem()
-			if COND then
-				control_signal.start_success = true
-			else
-				control_signal.start_success = false
+			if reactor_state.item_update then
+				update_ret = updateReactorItem()
+				if update_ret then
+					startReactor()
+					reactor_state.start_success = true
+				else
+					reactor_state.start_success = false
 			end
 		end,
 	on_state = 
 		function()
-			checkReactorItem()
+		end,
 			
 }
 
@@ -303,11 +337,11 @@ local function main()
 	
 	local current_state = "init_state"
     while true do
-		update_control_signal()
-		next_state = reactor_control_fsm[current_state]()
+		update_reactor_state()
 		reactor_control_action[current_state]()
+		next_state = reactor_control_fsm[current_state]()
 		current_state = next_state
-		os.sleep(0.05)
+		os.sleep(0.5)
 	end
 	unregister_listener()
 end
