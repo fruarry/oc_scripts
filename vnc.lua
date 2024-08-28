@@ -1,8 +1,6 @@
-local address_rsio_ext_control
 
 local computer = require('computer')
 local component = require('component')
-
 
 -- Reactor configuration
 config = {
@@ -20,12 +18,24 @@ config = {
 				38, 39, 41, 42, 43, 44, 47, 48, 50, 51, 53, 54 }
 		}
 	},
- 	overheat_threshold = 9000,
+	address_rsio_control = xx,
+	address_transposer = xx,
+	address_reactor_chamber = xx,
+
 	transposer_side_reactor = xx,
 	transposer_side_sink = xx,
 	transposer_side_source = xx,
+
+	rsio_side_on_state = xx,
+	rsio_side_off_state = xx,
+	rsio_side_error_state = xx,
+	rsio_side_ext_start = xx,
+	rsio_side_scram = xx,
+
+	overheat_threshold = 9000,
 	reactor_status_report_interval = 10,
-	reactor_watchdog_interval = 0.5
+	reactor_watchdog_interval = 0.5,
+	start_error_retry_interval = 5
 }
 
 -- Error code
@@ -37,7 +47,7 @@ local error_code = {
 }
 
 -- Component list
-local rsio_ext_control = component.proxy(address_rsio_ext_control)
+local rsio_control = component.proxy(address_rsio_control)
 local transposer = component.proxy(address_transposer)
 local reactor_chamber = component.proxy(address_reactor_chamber)
 
@@ -144,24 +154,13 @@ local function redstoneInputAny(rsio, level)
 	return false
 end
 
-local function redstoneOutputAll(rsio, level)
-	if type(level) ~= "number" then
-		level = 1
-	end
-	local output = {}
-	for i = 0, 5 do
-		output[i] = level
-	end
-	rsio.setOutput(output)
-end
-
 -- Display
 local function display(msg)
-	print("> " .. msg)
+	print("  INFO > " .. msg)
 end
 
 local function display_error(msg)
-	display("ERROR: " .. msg)
+	print(" ERROR > " .. msg)
 end
 
 local function display_header()
@@ -173,42 +172,14 @@ local function display_header()
 	print("==========================")
 end
 
--- Register keyboard control
-local function key_down_handler(eventName, keyboardAddress, char, code, playerName)
-	if code == 0x10 then
-		scram = true
-	end
-end
-
-local function reactor_status_report()
-	local producesEnergy = reactor_chamber.producesEnergy()
-	local EUOutput = reactor_chamber.getReactorEUOutput()
-	local heat = reactor_chamber.getHeat()
-	display(" Energy: " .. 
-end
-
-local function reactor_watchdog()
-	local heat = reactor_chamber.getHeat()
-	if heat >= config.overheat_threshold then
-		scram = true
-	end
-end
-
-local listener = {}
-local function register_listener()
-	table.insert(listener, event.register("key_down", key_down_handler))
-	table.insert(lintener, event.timer(reactor_watchdog_interval, reactor_watchdog)
-	table.insert(lintener, event.timer(reactor_status_report_interval, reactor_status_report)
-end
-
-local function unregister_listener()
-end
-
 -- Reactor structure
 local reactor_state = {
+	current_state = "init_state",
+	next_state = "init_state",
+
 	start_error_code = 0,
-			
-	-- scram
+	start_error_time = 0,
+
 	ext_start = false,
 	start_success = false,
 
@@ -217,9 +188,70 @@ local reactor_state = {
 	item_import = {}
 }
 
+local function scram()
+	display("SCRAM activated.")
+	reactor_state.current_state = "off_state"
+	reactor_state.next_state = "off_state"
+end
+
+-- Register event
+local exit_signal = false
+local function key_down_handler(eventName, keyboardAddress, char, code, playerName)
+	if code == 0x10 then
+		scram()
+		exit_signal = true
+	end
+end
+
+local function reactor_status_report()
+	local producesEnergy = reactor_chamber.producesEnergy()
+	local EUOutput = reactor_chamber.getReactorEUOutput()
+	local heat = reactor_chamber.getHeat()
+	local maxHeat = reactor_chamber.getMaxHeat()
+	if producesEnergy then
+		display("Active, Energy: " .. tostring(EUOutput) .. " EU/t, Heat/Max: " .. tostring(heat) .. " /" .. tostring(maxHeat))
+	else
+		display("Inactive, Heat/Max: " .. tostring(heat) .. " /" .. tostring(maxHeat))
+	end
+end
+
+local function reactor_watchdog()
+	local heat = reactor_chamber.getHeat()
+	if heat >= config.overheat_threshold then
+		scram()
+	end
+
+	rsio_control.setOutput(rsio_side_error_state, (reactor_state.current_state == "error_state") and 15 or 0)
+	rsio_control.setOutput(rsio_side_off_state, (reactor_state.current_state == "off_state") and 15 or 0)
+	rsio_control.setOutput(rsio_side_on_state, (reactor_state.current_state == "on_state") and 15 or 0)
+	rsio_control.setOutput(rsio_side_on_state, (reactor_state.current_state ~= "off_state") and 1 or 0)
+end
+
+local function redstone_changed_handler(address, side, oldValue, newValue, color)
+	if address == address_rsio_control and side == rsio_side_scram then
+		if newValue == 15 then
+			scram()
+		end
+	end
+end
+
+local listener = {}
+local function register_listener()
+	table.insert(listener, event.register("key_down", key_down_handler))
+	table.insert(listener, event.timer(reactor_watchdog_interval, reactor_watchdog))
+	table.insert(listener, event.timer(reactor_status_report_interval, reactor_status_report))
+	table.insert(listener, event.register("redstone_changed", redstone_changed_handler))
+end
+
+local function unregister_listener()
+	for i = 1, #listener do
+		event.unregister(listener[i])
+	end
+end
+
 local function update_reactor_state()
 	-- Check external control
-	reactor_state.ext_start = redstoneInputAny(rsio_ext_control)
+	reactor_state.ext_start = rsio_control.getInput(rsio_side_ext_start)
 	
 	-- Check item
 	item_export, item_import = checkReactorItem()
@@ -269,7 +301,11 @@ local reactor_control_fsm = {
 		end,
 	start_error_state = 
 		function()
-			if 
+			elapsed_second = (os.time() - reactor_state.start_error_time)*1000/60/60
+			if elapsed_second >= start_error_retry_interval then
+				return "start_state"
+			else
+				return "start_error_state"
 		end
 }
 local reactor_control_action = {
@@ -285,6 +321,9 @@ local reactor_control_action = {
 			if reactor_state.item_update then
 				reactor_state.start_error_code = updateReactorItem(reactor_state.item_export, reactor_state.item_import)
 				if reactor_state.start_error_code ~= 0 then
+					display_error(error_code[reactor_state.start_error_code])
+					reactor_state.start_error_time = os.time()
+					display("Retry in 5 seconds...")
 					return
 				end
 			end
@@ -297,14 +336,11 @@ local reactor_control_action = {
 		end,
 	off_state =
 		function()
-			display("Reactor stopped.")
 			stopReactor()
+			display("Reactor stopped.")
 		end
 	start_error_state = 
 		function()
-			display_error(error_code[reactor_state.start_error_code])
-			display_error("Retry in 5 seconds...")
-			os.sleep(5)
 		end
 }
 
@@ -313,13 +349,14 @@ local function main()
 	display_header()
 	register_listener()
 	
-	local current_state = "init_state"
-    while true do
-		reactor_control_action[current_state]()
-		next_state = reactor_control_fsm[current_state]()
-		current_state = next_state
+    while not exit_signal do
+		reactor_control_action[reactor_state.current_state]()
+		reactor_state.next_state = reactor_control_fsm[reactor_state.current_state]()
+
+		reactor_state.current_state = reactor_state.next_state
 		os.sleep(0.05)
 	end
+
 	unregister_listener()
 end
 
