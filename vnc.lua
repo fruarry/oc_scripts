@@ -39,17 +39,6 @@ local function checkSourceBoxItems(itemName, itemCount)
     end
 end
 
--- 停止核电仓
-local function stop()
-    redstone1.setOutput(reactorChamberSide, 0)
-end
-
---启动核电仓
-local function start()
-    redstone1.setOutput(reactorChamberSide, 1)
-end
-
-
 -- 向核电仓中转移原材料
 local function insertItemsIntoReactorChamber(project)
     local sourceBoxitemList = transposer.getAllStacks(sourceBoxSide).getAll()
@@ -107,45 +96,6 @@ local function insert(sinkSlot, insertItemName)
     end
 end
 
--- 物品移除和移入核电仓
-local function removeAndInsert(removeSlot, removeSide, insertItemName)
-    stop()
-    remove(removeSlot, removeSide)
-    insert(removeSlot, insertItemName)
-end
-
--- 物品监测（需要监测DMG和不需要监测DMG）
-local function checkItemDMG(project)
-    local reactorChamber = transposer.getAllStacks(reactorChamberSide)
-    local reactorChamberLenth = reactorChamber.count()
-    local reactorChamberList = reactorChamber.getAll()
-
-    for i = 1, #project do
-        for index, slot in pairs(project[i].slot) do
-            if project[i].dmg ~= -1 then
-                if reactorChamberList[slot - 1].damage ~= nil then
-                    if reactorChamberList[slot - 1].damage >= project[i].dmg then
-                        removeAndInsert(slot, outPutBoxSide, project[i].name)
-                    end
-                else
-                    stop()
-                    insert(slot, project[i].name)
-                end
-
-            elseif project[i].dmg == -1 then
-                if reactorChamberList[slot - 1].name ~= nil then
-                    if reactorChamberList[slot - 1].name ~= project[i].name and
-                        reactorChamberList[slot - 1].name == project[i].changeName then
-                        removeAndInsert(slot, outPutDrawerSide, project[i].name)
-                    end
-                else
-                    stop()
-                    insert(slot, project[i].name)
-                end
-            end
-        end
-    end
-end
 
 -- Reactor configuration
 config = {
@@ -165,12 +115,24 @@ config = {
 	},
  	overheat_threshold = 9000,
 	transposer_side_reactor = xx,
+	transposer_side_sink = xx,
+	transposer_side_source = xx,
+}
+
+-- Error code
+local error_code = {
+	[0] = "no_error",
+	[1] = "not_enough_export_space",
 }
 
 -- Component list
 local rsio_ext_control = component.proxy(address_rsio_ext_control)
 local transposer = component.proxy(address_transposer)
 local reactor_chamber = component.proxy(address_reactor_chamber)
+
+-- Configuration check
+local function checkConfiguration()
+end
 
 -- Generate item report of reactor chamber
 local function checkReactorItem()
@@ -204,9 +166,34 @@ local function checkReactorItem()
 end
 
 -- Update reactor chamber items
-local function updateReactorItem()
+local function updateReactorItem(export, import)
+	-- Export item
+	for i = 1, #export do
+		transfer_count = transposer.transferItem(transposer_side_reactor, transposer_side_sink, 1, export[i])
+		if transfer_count == 0 then
+			return 1
+		end
+	end
+	
+	-- Check item availability
+	import_item_index = {}
+	source_size = transposer.getInventorySize(transposer_side_source)
+	for i = 1, source_size do
+		source_item = transposer.
+		if 
+	end
 end
 
+-- Reactor control
+local function startReactor()
+	reactor_chamber.setActive(true)
+end
+
+local function stopReactor()
+	reactor_chamber.setActive(false)
+end
+
+-- Redstone IO
 local function redstoneInputAny(rsio, level)
 	if type(level) ~= "number" then
 		level = 15
@@ -250,14 +237,17 @@ end
 
 -- Reactor structure
 local reactor_state = {
+	error_code = 0,
+			
 	-- scram
 	ext_start = false,
 	start_success = false,
 	heat = 0,
 
 	item_update = false,
+	item_update_success = false,
 	item_export = {},
-	item_import = {},
+	item_import = {}
 }
 
 local function update_reactor_state()
@@ -297,17 +287,20 @@ local reactor_control_fsm = {
 		end,
 	start_state = 
 		function()
-			if reactor_state.start_success then
-				return "on_state"
+			if reactor_state.error_code ~= 0 then
+				return "error_state"
 			else
-				return "failure_state"
+				return "on_state"
 			end
 		end,
 	on_state = 
 		function()
-		
+			if reactor_state.error_code ~= 0 then
+				return "error_state"
 		end,
-	failure_state = 0,
+	error_state = 
+		function()
+		end
 }
 local reactor_control_action = {
 	init_state = 
@@ -316,18 +309,17 @@ local reactor_control_action = {
 	start_state = 
 		function()
 			if reactor_state.item_update then
-				update_ret = updateReactorItem()
-				if update_ret then
-					startReactor()
-					reactor_state.start_success = true
-				else
-					reactor_state.start_success = false
+				reactor_state.error_code = updateReactorItem(reactor_state.item_export, reactor_state.item_import)
+				if reactor_state.error_code ~= 0 then
+					return
+				end
 			end
+			startReactor()
+			reactor_state.start_success = true
 		end,
 	on_state = 
 		function()
-		end,
-			
+		end
 }
 
 -- Main control logic for vaccum nuclear reactor
