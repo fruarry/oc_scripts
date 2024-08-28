@@ -122,7 +122,9 @@ config = {
 -- Error code
 local error_code = {
 	[0] = "no_error",
-	[1] = "not_enough_export_space",
+	[1] = "not_enough_sink_space",
+	[2] = "not_eought_source_item",
+	[3] = "item_transfer_error",
 }
 
 -- Component list
@@ -147,10 +149,10 @@ local function checkReactorItem()
 	end
 	
 	for i = 1, #config.resource do
-		resourcce = config.resource[i]
+		local resourcce = config.resource[i]
 		for s = 1, #resource.slot do
-			slot = resource.slot[s]
-			target = transposer.getStackInSlot(config.transposer_side_reactor, slot)
+			local slot = resource.slot[s]
+			local target = transposer.getStackInSlot(config.transposer_side_reactor, slot)
 			if target == nil then
 				importAppend(resource.name, slot)
 			elseif target.name ~= resource.name then
@@ -169,19 +171,45 @@ end
 local function updateReactorItem(export, import)
 	-- Export item
 	for i = 1, #export do
-		transfer_count = transposer.transferItem(transposer_side_reactor, transposer_side_sink, 1, export[i])
+		local transfer_count = transposer.transferItem(transposer_side_reactor, transposer_side_sink, 1, export[i])
 		if transfer_count == 0 then
-			return 1
+			return 1  -- error code
 		end
 	end
 	
-	-- Check item availability
-	import_item_index = {}
-	source_size = transposer.getInventorySize(transposer_side_source)
+	-- Generate transfer list
+	local transfer_list = {}
+	local source_size = transposer.getInventorySize(transposer_side_source)
 	for i = 1, source_size do
-		source_item = transposer.
-		if 
+		local source_item = transposer.getStackInSlot(transposer_side_source, i)
+		local import_item_slot = import[source_item.name]
+		if source_item ~= nil and import_item_slot ~= nil then
+			table.insert(transfer_list, {i, import_item_slot[#import_item_slot]})
+			import_item_slot[#import_item_slot] = nil
+			if #import_item_slot == 0 then
+				import[source_item.name] = nil
+				if #import == 0 then
+					break
+				end
+			end
+		end
 	end
+
+	-- Not enough item
+	if #import ~= 0 then
+		return 2  -- error code
+	end
+
+	-- Transfer item
+	for i = 1, #transfer_list do
+		local transfer_count = transposer.transferItem(
+			transposer_side_source, transposer_side_reactor, 1, transfer_list[i][1], transfer_list[i][2])
+		if transfer_count == 0 then
+			return 3  -- error code
+		end
+	end
+
+	return 0
 end
 
 -- Reactor control
