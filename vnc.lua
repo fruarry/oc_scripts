@@ -289,18 +289,16 @@ end
 
 local function reactor_status_header()
     term.setCursor(1, 1)
-    term.write("==================================================")
-    term.write("\n  Nuclear Reactor Control -- by Kerel")
+    term.write("==================================================\n")
+    term.write("  VNR Program -- by Kerel                         \n")
+    term.write("  Heat/Max = " .. tostring(reactor_state.heat) .. "/" .. tostring(reactor_state.maxHeat) .. "                         \n", false)
+
     if reactor_state.producesEnergy then
-    term.write("\n  >>> Active <<<")
-    term.write("\n  Heat/Max = " .. tostring(reactor_state.heat) .. "/" .. tostring(reactor_state.maxHeat))
-    term.write("\n  Energy = " .. tostring(reactor_state.EUOutput) .. " EU/t")
+    term.write("  Energy = " .. tostring(reactor_state.EUOutput) .. " EU/t                         \n", false)
     else
-    term.write("\n  -- Inactive --")
-    term.write("\n  Heat/Max=" .. tostring(reactor_state.heat) .. "/" .. tostring(reactor_state.maxHeat))
-    term.write("\n  Energy = 0 EU/t")
+    term.write("  Energy = 0 EU/t                                 \n")
     end
-    term.write("\n==================================================\n")
+    term.write("==================================================\n")
 end
 
 local function reactor_status()
