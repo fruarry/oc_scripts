@@ -8,6 +8,7 @@ local text = require("text")
 local os = require("os")
 
 local image_folder = "D:/pic"
+local refresh_interval = 15
 
 local pal = {}
 local q = {}
@@ -261,7 +262,7 @@ end
 
 local images = get_images()
 if #images > 0 then
-    local timer = event.timer(10, drawAction, math.huge)
+    local timer = event.timer(refresh_interval, drawAction, math.huge)
     local touchListener = event.listen("touch", touchAction)
     local idx = 1
     shuffle(images)
