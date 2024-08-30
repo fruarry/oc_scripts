@@ -11,11 +11,11 @@ address_rsio_control = "bfac2715-c9d0-4890-8874-6b84257b875d"
 address_transposer = "25798479-84cf-4299-834b-791ccd2f2db7"
 address_reactor_chamber = "87736b6a-2eb3-4f58-9d6f-bcbaa8dde5c1"
 
-transposer_side_reactor = sides.bottom
-transposer_side_input = sides.east
-transposer_side_output = sides.top
+transposer_side_reactor = sides.top
+transposer_side_input = sides.west
+transposer_side_output = sides.east
 
-rsio_side = sides.north
+rsio_side = sides.east
 rsio_color_on_state = colors.green
 rsio_color_error_state = colors.orange
 rsio_color_ext_state = colors.white
@@ -46,6 +46,13 @@ config = {
 local rsio_control = component.proxy(address_rsio_control)
 local transposer = component.proxy(address_transposer)
 local reactor_chamber = component.proxy(address_reactor_chamber)
+
+-- Restone IO bundle output
+local function rsio_set_bundle_output_all(side, level)
+    for i = 0, 15 do
+        rsio_control.setBundledOutput(side, i, level)
+    end
+end
 
 -- Reactor structure
 local reactor_state = {
@@ -115,9 +122,9 @@ local function check_component()
     if rsio_control == nil then
         display("Cannot access redstone I/O.")
         return 4
-    elseif rsio_control.getBundledOutput(rsio_side, rsio_color_ext_state) == 15 then
+    elseif rsio_control.getBundledInput(rsio_side, rsio_color_ext_state) > 15 then
         display("Start signal is high.")
-    elseif rsio_control.getBundledOutput(rsio_side, rsio_color_scram) == 15 then
+    elseif rsio_control.getBundledInput(rsio_side, rsio_color_scram) > 15 then
         display("SCRAM signal is high.")
     end
 
@@ -310,10 +317,10 @@ local function reactor_status()
     reactor_status_header()
     term.setCursor(cx, cy)
     
-    rsio_control.setBundledOutput(rsio_side, rsio_color_ext_state, ternary(reactor_state.current_state == "off_state", 1, 0))
+    rsio_control.setBundledOutput(rsio_side, rsio_color_ext_state, ternary(reactor_state.current_state == "off_state", 15, 0))
     rsio_control.setBundledOutput(rsio_side, rsio_color_error_state, ternary(reactor_state.current_state == "start_error_state", 15, 0))
     rsio_control.setBundledOutput(rsio_side, rsio_color_on_state, ternary(reactor_state.current_state == "on_state", 15, 0))
-    rsio_control.setBundledOutput(rsio_side, rsio_color_scram, ternary(reactor_state.current_state ~= "off_state", 1, 0))
+    rsio_control.setBundledOutput(rsio_side, rsio_color_scram, ternary(reactor_state.current_state ~= "off_state", 15, 0))
 end
 
 local exit_signal = false
@@ -326,10 +333,10 @@ end
 
 local function redstone_changed_handler(eventName, address, side, oldValue, newValue, color)
     if address == address_rsio_control then
-        if side == rsio_side and color == rsio_color_scram and newValue == 15 then
+        if side == rsio_side and color == rsio_color_scram and newValue > 15 then
             scram()
         end
-        if side == rsio_side and color == rsio_color_ext_state and newValue == 15 then
+        if side == rsio_side and color == rsio_color_ext_state and newValue > 15 then
             if reactor_state.current_state == "off_state" then
                 reactor_state.ext_start = true
             end
@@ -416,7 +423,7 @@ local reactor_control_fsm = {
 local function main()
     os.execute("cls")
     reactor_status_header()
-    rsio_control.setBundledOutput(1)
+    rsio_set_bundle_output_all(rsio_side, 15)
     register_event()
     
     while not exit_signal do
@@ -427,7 +434,7 @@ local function main()
 
     display("Exiting...")
     unregister_event()
-    rsio_control.setBundledOutput(0)
+    rsio_set_bundle_output_all(rsio_side, 0)
 end
 
 main()
