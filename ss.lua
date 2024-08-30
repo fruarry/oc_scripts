@@ -1,26 +1,3 @@
---[[
-ctif-oc: OpenComputers viewer for CTIF image files
-Copyright (c) 2016, 2017, 2018 asie
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-of the Software, and to permit persons to whom the Software is furnished to do
-so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-]]
-
 local args = {...}
 local component = require("component")
 local event = require("event")
@@ -29,8 +6,10 @@ local unicode = require("unicode")
 local keyboard = require("keyboard")
 local text = require("text")
 local os = require("os")
-local pal = {}
 
+local image_folder = "D:/pic"
+
+local pal = {}
 local q = {}
 for i=0,255 do
   local dat = (i & 0x01) << 7
@@ -244,9 +223,8 @@ function drawImage(data, offx, offy)
   end
 end
 
--- Function to get a list of images in the /pics folder
+-- Function to get a list of images in the /pic folder
 local function get_images()
-    local image_folder = "/pics"
     local handle = io.popen('ls "' .. image_folder .. '"')
     local result = handle:read("*a")
     handle:close()
@@ -260,27 +238,51 @@ local function get_images()
     return images
 end
 
--- Function to select a random image from the list
-local function display_random_image()
-    math.randomseed(os.time())
-    drawImage(images[math.random(1, #images)])
+-- Stop signal for main loop
+local stop_signal = false
+local function touchAction(eventName, screenAddress, x, y, button, playerName)
+    stop_signal = true
 end
 
-local stop_flag = false
+-- GPU draw signal
+local draw_signal = false
+local function drawAction()
+    draw_signal = true
+end
+
+-- Shuffle
+local function shuffle(tbl)
+  for i = #tbl, 2, -1 do
+    local j = math.random(i)
+    tbl[i], tbl[j] = tbl[j], tbl[i]
+  end
+  return tbl
+end
+
 local images = get_images()
 if #images > 0 then
-    drawImage(images[1])
-    local timer = event.timer(10, display_random_image, math.huge)
-    while true do
-        local name,addr,char,key,player = event.pull("key_down")
-        if key == 0x10 then
-            event.cancel(timer)
-            break
+    local timer = event.timer(10, drawAction, math.huge)
+    local touchListener = event.listen("touch", touchAction)
+    local idx = 1
+    shuffle(images)
+
+    draw_signal = true
+    while (not stop_signal) do
+        os.sleep(0.1)
+        if (draw_signal) then
+            drawImage(loadImage(images[idx]))
+            draw_signal = false
+            idx = idx + 1
+            if idx > #images then
+                idx = 1
+                shuffle(images)
+            end
         end
     end
-end
+    event.cancel(timer)
 
-gpu.setBackground(0, false)
-gpu.setForeground(16777215, false)
-gpu.setResolution(160, 50)
-gpu.fill(1, 1, 160, 50, " ")
+    gpu.setBackground(0, false)
+    gpu.setForeground(16777215, false)
+    gpu.setResolution(160, 50)
+    gpu.fill(1, 1, 160, 50, " ")
+end
