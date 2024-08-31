@@ -208,7 +208,7 @@ local function update_reactor_item(no)
 
     local reactor_box = reactor[no].transposer.getAllStacks(config[no].side_reactor).getAll()
     for i = 1, #reactor[no].pattern.resource do
-        local resource = #reactor[no].pattern.resource[i]
+        local resource = reactor[no].pattern.resource[i]
         for j = 1, #resource.slot do
             local reactor_slot = resource.slot[j]
             local reactor_box_slot = reactor_box[reactor_slot - 1]  -- inventory index start with 0
@@ -278,7 +278,7 @@ local function get_buffer_reading()
     buffer.EUStored = buffer.EUStored + buffer.obj.getEUStored()
     buffer.EUmax = buffer.EUmax + buffer.obj.getEUMaxStored()
     buffer.EUPrec = buffer.EUStored / buffer.EUmax
-    buffer.EUNetChange = buffer.obj.getAverageElectricityInput() - buffer.obj.getAverageElectricityOutput()
+    buffer.EUNetChange = buffer.obj.getAverageElectricInput() - buffer.obj.getAverageElectricOutput()
 end
 
 local function auto_start()
@@ -326,19 +326,19 @@ end
 
 local function print_header()
     term.setCursor(1, 1)
-    term.write("--------+--------+--------+-----------------------\n")
-    term.write("reactor |state   |heat%   |energy                 \n")
-    term.write("--------+--------+--------+-----------------------\n")
+    term.write("--------+--------+--------+-----------------------\n", false)
+    term.write("reactor |state   |heat%   |energy                 \n", false)
+    term.write("--------+--------+--------+-----------------------\n", false)
     for i = 1, #reactor do
-        term.write(string.format("%-8d|%8s|%7.1f%%|%19dEU/t\n", i, reactor[i].state, reactor[i].heatPrec * 100, reactor[i].EUOutput))
+        term.write(string.format("%-8d|%8s|%7.1f%%|%19dEU/t\n", i, reactor[i].state, reactor[i].heatPrec * 100, reactor[i].EUOutput), false)
     end
-    term.write("--------+--------+--------+-----------------------\n")
+    term.write("--------+--------+--------+-----------------------\n", false)
     if buffer.enable then
-        term.write(string.format("%15dEU|%7.1f%%|%19dEU/t\n", buffer.EUStored, buffer.EUPrec * 100, buffer.EUNetChange))
+        term.write(string.format("%15dEU|%7.1f%%|%19dEU/t\n", buffer.EUStored, buffer.EUPrec * 100, buffer.EUNetChange), false)
     else
-        term.write("buffer inactive  |        |                       \n")
+        term.write("buffer inactive  |        |                       \n", false)
     end
-    term.write("-----------------+--------+----Kerel The Top UwU--\n")
+    term.write("-----------------+--------+----Kerel The Top UwU--\n", false)
 end
 
 local function status_handler()
@@ -367,12 +367,11 @@ end
 
 local function redstone_changed_handler(eventName, address, side, oldValue, newValue, color)
     for i = 1, #reactor do
-        if address == config[i].addr_rsio then
-            if side == config[i].side_rsio and color == config[i].color_stop_en and newValue > 15 then
+        if address == config[i].addr_rsio and side == config[i].side_rsio then
+            if color == config[i].color_stop_en and newValue > 15 then
                 info(i, "Stop signal received.")
                 reactor[i].stop_en = true
-            end
-            if side == config[i].side_rsio and color == config[i].color_start_en and newValue > 15 then
+            elseif color == config[i].color_start_en and newValue > 15 then
                 if reactor[i].state == "OFF" then
                     info(i, "Start signal received.")
                     reactor[i].start_en = true
@@ -523,10 +522,11 @@ local function main()
     print("Starting...")
     init()
 
-    register_event()
     pcall(light_control, 15)
     os.execute("cls")
     print_header()
+
+    register_event()
 
     while true do
         for i = 1, #reactor do
@@ -544,15 +544,14 @@ local function main()
                 reactor[i].start_en = false -- clear start signal
                 reactor[i].state = "OFF"
             end
-            os.sleep(0.05)
         end
         if exit_signal then
             for i = 1, #reactor do
                 pcall(stop_reactor, i)
-                reactor[i].state = "OFF"
             end
             break
         end
+        os.sleep(0.1)
     end
 
     print("Exiting...")
