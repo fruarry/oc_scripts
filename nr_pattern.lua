@@ -1,6 +1,6 @@
 return {
     quad_uranium = {
-        pattern = {
+        resource = {
             {
                 name = "gregtech:gt.360k_Helium_Coolantcell",
                 damage = 90,
@@ -17,7 +17,7 @@ return {
         overheat = 7000
     },
     glowstone = {
-        pattern = {
+        resource = {
             {
                 name = "gregtech:gt.360k_Helium_Coolantcell",
                 dmg = 90,

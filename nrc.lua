@@ -139,15 +139,15 @@ end
 -- Check reactor damage
 local function check_reactor_damage(no)
     local reactor_box = reactor[no].transposer.getAllStacks(config[no].side_reactor).getAll()
-    for i = 1, #reactor[no].pattern do
-        local pattern = reactor[no].pattern[i]
-        for j = 1, #pattern.slot do
-            local reactor_box_slot = reactor_box[pattern.slot[j] - 1]
+    for i = 1, #reactor[no].pattern.resource do
+        local resource = reactor[no].pattern.resource[i]
+        for j = 1, #resource.slot do
+            local reactor_box_slot = reactor_box[resource.slot[j] - 1]
             if reactor_box_slot.name == nil then
                 return 5
-            elseif reactor_box_slot.name ~= pattern.name then
+            elseif reactor_box_slot.name ~= resource.name then
                 return 6
-            elseif pattern.damage ~= -1 and reactor_box_slot.damage >= pattern.damage then
+            elseif resource.damage ~= -1 and reactor_box_slot.damage >= resource.damage then
                 return 7
             end
         end
@@ -160,7 +160,7 @@ local function update_reactor_item(no)
     -- Generate input box item lookup table
     local input_box = reactor[no].transposer.getAllStacks(config[no].side_input).getAll()
     local input_item_list = {}
-    for i = 0, #input_box-1 do
+    for i = 0, #input_box do
         local input_box_slot = input_box[i]
         if input_box_slot.name then
             append(input_item_list, input_box_slot.name, i)
@@ -196,7 +196,7 @@ local function update_reactor_item(no)
 
         -- Input not available
         if input_slot == -1 then
-            append(missing_item_list, pattern.name, slot)
+            append(missing_item_list, name, slot)
             return 0
         end
 
@@ -207,23 +207,23 @@ local function update_reactor_item(no)
     end
 
     local reactor_box = reactor[no].transposer.getAllStacks(config[no].side_reactor).getAll()
-    for i = 1, #reactor[no].pattern do
-        local pattern = reactor[no].pattern[i]
-        for j = 1, #pattern.slot do
-            local reactor_slot = pattern.slot[j]
+    for i = 1, #reactor[no].pattern.resource do
+        local resource = #reactor[no].pattern.resource[i]
+        for j = 1, #resource.slot do
+            local reactor_slot = resource.slot[j]
             local reactor_box_slot = reactor_box[reactor_slot - 1]  -- inventory index start with 0
             if reactor_box_slot.name == nil then
-                try_input(pattern.name, reactor_slot)
-            elseif reactor_box_slot.name ~= pattern.name then
+                try_input(resource.name, reactor_slot)
+            elseif reactor_box_slot.name ~= resource.name then
                 if try_output(reactor_slot) == 0 then
                     return 1  -- error code
                 end
-                try_input(pattern.name, reactor_slot)
-            elseif pattern.damage ~= -1 and reactor_box_slot.damage >= pattern.damage then
+                try_input(resource.name, reactor_slot)
+            elseif resource.damage ~= -1 and reactor_box_slot.damage >= resource.damage then
                 if try_output(reactor_slot) == 0 then
                     return 1  -- error code
                 end
-                try_input(pattern.name, reactor_slot)
+                try_input(resource.name, reactor_slot)
             end
         end
     end
@@ -268,8 +268,7 @@ local function get_buffer_reading()
     buffer.EUStored = 0
     buffer.EUmax = 0
 
-    local machine_slot = buffer.inv.getAllStacks()
-    local differenceCharge = 0
+    local machine_slot = buffer.inv.getAllStacks(global_config.side_buffer).getAll()
     for i = 0, #machine_slot do
         if machine_slot[i] then
             buffer.EUStored = buffer.EUStored + machine_slot[i].charge
@@ -367,7 +366,7 @@ local function key_down_handler(eventName, keyboardAddress, char, code, playerNa
 end
 
 local function redstone_changed_handler(eventName, address, side, oldValue, newValue, color)
-    for i = 1, #config do
+    for i = 1, #reactor do
         if address == config[i].addr_rsio then
             if side == config[i].side_rsio and color == config[i].color_stop_en and newValue > 15 then
                 info(i, "Stop signal received.")
@@ -530,9 +529,8 @@ local function main()
     print_header()
 
     while true do
-        local status = false
         for i = 1, #reactor do
-            status, ret = pcall(reactor_control_fsm[reactor[i].state], i)
+            local status, ret = pcall(reactor_control_fsm[reactor[i].state], i)
             if not status then
                 info(i, ret)
                 info(i, "Unexpected error. Please check nuclear reactor.")
@@ -546,11 +544,15 @@ local function main()
                 reactor[i].start_en = false -- clear start signal
                 reactor[i].state = "OFF"
             end
+            os.sleep(0.05)
         end
         if exit_signal then
+            for i = 1, #reactor do
+                pcall(stop_reactor, i)
+                reactor[i].state = "OFF"
+            end
             break
         end
-        os.sleep(0.05)
     end
 
     print("Exiting...")
