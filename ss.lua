@@ -12,6 +12,8 @@ local refresh_interval = 15
 
 local pal = {}
 local q = {}
+local data = {}
+
 for i=0,255 do
   local dat = (i & 0x01) << 7
   dat = dat | (i & 0x02) >> 1 << 6
@@ -64,8 +66,7 @@ function r16(file)
   return x | (r8(file) << 8)
 end
 
-function loadImage(filename)
-  local data = {}
+function loadImage(filename, data)
   local file = io.open(filename, 'rb')
   local hdr = {67,84,73,70}
 
@@ -87,9 +88,6 @@ function loadImage(filename)
     error("Unsupported platform ID: " .. platformId .. ":" .. platformVariant)
   end
 
-  data[1] = {}
-  data[2] = {}
-  data[3] = {}
   data[2][1] = r8(file)
   data[2][1] = (data[2][1] | (r8(file) << 8))
   data[2][2] = r8(file)
@@ -136,7 +134,6 @@ function loadImage(filename)
   end
 
   io.close(file)
-  return data
 end
 
 function gpuBG()
@@ -235,7 +232,6 @@ local function get_images()
     for filename in result:gmatch("[^\r\n]+") do
         table.insert(images, image_folder .. "/" .. filename)
     end
-
     return images
 end
 
@@ -262,6 +258,8 @@ end
 
 local images = get_images()
 if #images > 0 then
+    data = {{}, {} ,{}}
+
     local timer = event.timer(refresh_interval, drawAction, math.huge)
     local touchListener = event.listen("touch", touchAction)
     local idx = 1
@@ -269,9 +267,9 @@ if #images > 0 then
 
     draw_signal = true
     while (not stop_signal) do
-        os.sleep(0.1)
         if (draw_signal) then
-            drawImage(loadImage(images[idx]))
+            loadImage(images[idx], data)
+            drawImage(data)
             draw_signal = false
             idx = idx + 1
             if idx > #images then
@@ -279,6 +277,7 @@ if #images > 0 then
                 shuffle(images)
             end
         end
+        os.sleep(0.1)
     end
     event.cancel(timer)
 
