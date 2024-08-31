@@ -9,8 +9,8 @@ local nr_pattern = require("nr_pattern")
 
 -- Reactor configuration
 local global_config = {
-    addr_buffer = "f3851c84-71d2-43f0-bfbc-e953a6fd6d3c",
-    addr_buffer_inv = "cdb345dc-4855-4fe1-a781-10a24c69ab12",
+    addr_buffer = "56ccaa62-33bb-48b7-8468-11ad98e118b7",
+    addr_buffer_inv = "92032b5f-0de2-423d-b637-b93083313824",
     side_buffer = sides.bottom,
 
     buffer_level = 0.9,
@@ -26,8 +26,8 @@ local config = {
         pattern_name = "quad_uranium",
 
         addr_rsio = "185e3c6b-b187-4b69-9e53-e05e12ffdaa0",
-        addr_transposer = "7f80ab5e-a78d-4ef9-abf6-0f374425139f",
-        addr_reactor_chamber = "ed33ff55-73c0-44ea-af14-4a84744bd936",
+        addr_transposer = "30cd614d-b6af-4ccb-b8a4-685f67ae6c66",
+        addr_reactor_chamber = "263b1c80-115a-440e-b490-8a0538a58387",
 
         side_reactor = sides.north,
         side_input = sides.west,
@@ -87,6 +87,7 @@ local buffer = {
     inv = nil,
     
     enable = false,
+    auto_start = false,
     EUStored = 0,
     EUmax = 0,
     EUNetChange = 0,
@@ -231,7 +232,7 @@ local function update_reactor_item(no)
     -- Report missing item
     if not is_empty(missing_item_list) then
         for name, slot in pairs(missing_item_list) do
-            info(no, string.format("Missing $dx\"%s\"", #slot, name))
+            info(no, string.format("Missing %dx\"%s\"", #slot, name))
         end
         return 2    -- error code
     end
@@ -316,25 +317,26 @@ local function watchdog_handler()
     end
 
     if buffer.enable and pcall(get_buffer_reading) then
-        if buffer.EUPrec < global_config.buffer_level then
-            pcall(auto_start)
-        else
-            pcall(auto_stop)
+        if buffer.auto_start then
+            if buffer.EUPrec < global_config.buffer_level then
+                pcall(auto_start)
+            else
+                pcall(auto_stop)
+            end
         end
     end
 end
 
 local function print_header()
     term.setCursor(1, 1)
-    term.write("--------+--------+--------+-----------------------\n", false)
     term.write("reactor |state   |heat%   |energy                 \n", false)
     term.write("--------+--------+--------+-----------------------\n", false)
     for i = 1, #reactor do
-        term.write(string.format("%-8d|%8s|%7.1f%%|%19dEU/t\n", i, reactor[i].state, reactor[i].heatPrec * 100, reactor[i].EUOutput), false)
+        term.write(string.format("%-8d|%8s|%7.1f%%|%19.fEU/t\n", i, reactor[i].state, reactor[i].heatPrec * 100, reactor[i].EUOutput), false)
     end
     term.write("--------+--------+--------+-----------------------\n", false)
     if buffer.enable then
-        term.write(string.format("%15dEU|%7.1f%%|%19dEU/t\n", buffer.EUStored, buffer.EUPrec * 100, buffer.EUNetChange), false)
+        term.write(string.format("%14.fMEU|%7.1f%%|%19.fEU/t\n", buffer.EUStored / 1e6, buffer.EUPrec * 100, buffer.EUNetChange), false)
     else
         term.write("buffer inactive  |        |                       \n", false)
     end
@@ -362,6 +364,8 @@ local function key_down_handler(eventName, keyboardAddress, char, code, playerNa
             reactor[i].stop_en = true
         end
         exit_signal = true
+    elseif char == "a" then
+        buffer.auto_start = not buffer.auto_start
     end
 end
 
@@ -386,8 +390,8 @@ local event_handler = {}
 local function register_event()
     table.insert(event_handler, event.listen("key_down", key_down_handler))
     table.insert(event_handler, event.listen("redstone_changed", redstone_changed_handler))
-    table.insert(event_handler, event.timer(global_config.watchdog_interval, watchdog_handler, math.huge))
-    table.insert(event_handler, event.timer(global_config.status_interval, status_handler, math.huge))
+--    table.insert(event_handler, event.timer(global_config.watchdog_interval, watchdog_handler, math.huge))
+--    table.insert(event_handler, event.timer(global_config.status_interval, status_handler, math.huge))
 end
 
 local function unregister_event()
@@ -502,7 +506,8 @@ local function init()
         print("Cannot access battery buffer inventory, buffer disabled.")
         buffer.enable = false
     else
-        print("Battery buffer detected, buffer enabled.")
+        print("Battery buffer detected, auto start enabled.")
+        buffer.auto_start = true
         buffer.enable = true
     end
 end
@@ -528,7 +533,10 @@ local function main()
 
     register_event()
 
-    while true do
+    while not exit_signal do
+        watchdog_handler()  -- call directly
+        status_handler()  -- call directly
+
         for i = 1, #reactor do
             local status, ret = pcall(reactor_control_fsm[reactor[i].state], i)
             if not status then
@@ -545,13 +553,11 @@ local function main()
                 reactor[i].state = "OFF"
             end
         end
-        if exit_signal then
-            for i = 1, #reactor do
-                pcall(stop_reactor, i)
-            end
-            break
-        end
         os.sleep(0.1)
+    end
+
+    for i = 1, #reactor do
+        pcall(stop_reactor, i)
     end
 
     print("Exiting...")
