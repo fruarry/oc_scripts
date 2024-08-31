@@ -190,7 +190,7 @@ local function update_reactor_item()
     -- Generate input box item lookup table
     local input_box = transposer.getAllStacks(transposer_side_input).getAll()
     local input_item_list = {}
-    for i = 0, #input_box-1 do
+    for i = 0, #input_box do
         local input_box_slot = input_box[i]
         if input_box_slot.name then
             append(input_item_list, input_box_slot.name, i)
