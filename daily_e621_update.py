@@ -97,14 +97,14 @@ def push_to_github(img_list):
     print("update completed")
 
 import pickle
-# img_list = download_images()
+img_list = download_images()
 
-# with open(f'./daily_e621/log/{ytd_date}', 'wb') as f:
-#     pickle.dump(img_list, f)
+with open(f'./daily_e621/log/{ytd_date}', 'wb') as f:
+    pickle.dump(img_list, f)
 
-with open(f'./daily_e621/log/2024-08-29', 'rb') as f:
-    img_list = pickle.load(f)
+# with open(f'./daily_e621/log/2024-08-29', 'rb') as f:
+#     img_list = pickle.load(f)
     
-#convert_images(img_list)
+convert_images(img_list)
 
 push_to_github(img_list)
