@@ -331,7 +331,7 @@ local function print_header()
     term.write("reactor |state   |heat%   |energy                 \n")
     term.write("--------+--------+--------+-----------------------\n")
     for i = 1, #reactor do
-        term.write(string.format("%-8d|%-8s|%7.1f%%|%19dEU/t\n", i, reactor[i].state, reactor[i].heatPrec * 100, reactor[i].EUOutput))
+        term.write(string.format("%-8d|%8s|%7.1f%%|%19dEU/t\n", i, reactor[i].state, reactor[i].heatPrec * 100, reactor[i].EUOutput))
     end
     term.write("--------+--------+--------+-----------------------\n")
     if buffer.enable then
@@ -550,7 +550,7 @@ local function main()
         if exit_signal then
             break
         end
-        os.sleep(0.2)
+        os.sleep(0.05)
     end
 
     print("Exiting...")
