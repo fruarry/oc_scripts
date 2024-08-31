@@ -26,11 +26,6 @@ for i=0,255 do
   q[i + 1] = unicode.char(0x2800 | dat)
 end
 
-function error(str)
-  print("ERROR: " .. str)
-  os.exit()
-end
-
 function resetPalette(data)
  for i=0,255 do
   if (i < 16) then
@@ -66,7 +61,7 @@ function r16(file)
   return x | (r8(file) << 8)
 end
 
-function loadImage(filename, data)
+function loadImage(filename)
   local file = io.open(filename, 'rb')
   local hdr = {67,84,73,70}
 
@@ -153,7 +148,7 @@ function gpuFG()
   end
 end
 
-function drawImage(data, offx, offy)
+function drawImage(offx, offy)
   if offx == nil then offx = 0 end
   if offy == nil then offy = 0 end
 
@@ -268,9 +263,10 @@ if #images > 0 then
     draw_signal = true
     while (not stop_signal) do
         if (draw_signal) then
-            loadImage(images[idx], data)
-            drawImage(data)
             draw_signal = false
+            if pcall(loadImage, images[idx]) then
+              drawImage()
+            end
             idx = idx + 1
             if idx > #images then
                 idx = 1
