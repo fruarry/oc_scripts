@@ -7,21 +7,21 @@ local colors = require("colors")
 local sides = require("sides")
 
 -- Reactor configuration
-address_rsio_control = "bfac2715-c9d0-4890-8874-6b84257b875d"
-address_transposer = "25798479-84cf-4299-834b-791ccd2f2db7"
-address_reactor_chamber = "87736b6a-2eb3-4f58-9d6f-bcbaa8dde5c1"
+local address_rsio_control = "bfac2715-c9d0-4890-8874-6b84257b875d"
+local address_transposer = "25798479-84cf-4299-834b-791ccd2f2db7"
+local address_reactor_chamber = "87736b6a-2eb3-4f58-9d6f-bcbaa8dde5c1"
 
-transposer_side_reactor = sides.top
-transposer_side_input = sides.west
-transposer_side_output = sides.east
+local transposer_side_reactor = sides.top
+local transposer_side_input = sides.west
+local transposer_side_output = sides.east
 
-rsio_side = sides.east
-rsio_color_on_state = colors.green
-rsio_color_error_state = colors.orange
-rsio_color_ext_state = colors.white
-rsio_color_scram = colors.red
+local rsio_side = sides.east
+local rsio_color_on_state = colors.green
+local rsio_color_error_state = colors.orange
+local rsio_color_ext_state = colors.white
+local rsio_color_scram = colors.red
 
-config = {
+local config = {
     pattern = {
         {
             name = "gregtech:gt.360k_Helium_Coolantcell",
@@ -117,6 +117,20 @@ local function display_error(err)
     print("*error> " .. error_msg[err])
 end
 
+local function reactor_status_header()
+    term.setCursor(1, 1)
+    term.write("==================================================\n")
+    term.write("  VNR Program -- by Kerel                         \n")
+    term.write("  Heat/Max = " .. tostring(reactor_state.heat) .. "/" .. tostring(reactor_state.maxHeat) .. "                         \n", false)
+
+    if reactor_state.producesEnergy then
+    term.write("  Energy = " .. tostring(reactor_state.EUOutput) .. " EU/t                         \n", false)
+    else
+    term.write("  Energy = 0 EU/t                                 \n")
+    end
+    term.write("==================================================\n")
+end
+
 -- Component check
 local function check_component()
     if rsio_control == nil then
@@ -156,7 +170,7 @@ end
 local function check_reactor_damage(quick)
     local reactor_box = transposer.getAllStacks(transposer_side_reactor).getAll()
     for i = 1, #config.pattern do
-        pattern = config.pattern[i]
+        local pattern = config.pattern[i]
         for j = 1, #pattern.slot do
             local reactor_box_slot = reactor_box[pattern.slot[j] - 1]
             if reactor_box_slot.name == nil then
@@ -224,7 +238,7 @@ local function update_reactor_item()
 
     local reactor_box = transposer.getAllStacks(transposer_side_reactor).getAll()
     for i = 1, #config.pattern do
-        pattern = config.pattern[i]
+        local pattern = config.pattern[i]
         for j = 1, #pattern.slot do
             local reactor_slot = pattern.slot[j]
             local reactor_box_slot = reactor_box[reactor_slot - 1]  -- inventory index start with 0
@@ -295,20 +309,6 @@ local function reactor_watchdog()
         display("WDT: Detected unexpected reactor activation.")
         scram()
     end
-end
-
-local function reactor_status_header()
-    term.setCursor(1, 1)
-    term.write("==================================================\n")
-    term.write("  VNR Program -- by Kerel                         \n")
-    term.write("  Heat/Max = " .. tostring(reactor_state.heat) .. "/" .. tostring(reactor_state.maxHeat) .. "                         \n", false)
-
-    if reactor_state.producesEnergy then
-    term.write("  Energy = " .. tostring(reactor_state.EUOutput) .. " EU/t                         \n", false)
-    else
-    term.write("  Energy = 0 EU/t                                 \n")
-    end
-    term.write("==================================================\n")
 end
 
 local function reactor_status()
@@ -411,7 +411,7 @@ local reactor_control_fsm = {
         end,
     start_error_state = 
         function()
-            elapsed_second = (os.time() - reactor_state.last_error_time)*5.55  -- convert to second
+            local elapsed_second = (os.time() - reactor_state.last_error_time)*0.014  -- convert to second
             if elapsed_second >= config.start_error_retry_interval then
                 return "start_state"
             end
@@ -429,7 +429,7 @@ local function main()
     while not exit_signal do
         reactor_state.next_state = reactor_control_fsm[reactor_state.current_state]()
         reactor_state.current_state = reactor_state.next_state
-        os.sleep(0.05)
+        os.sleep(0.2)
     end
 
     display("Exiting...")
