@@ -24,16 +24,15 @@ local global_config = {
 local config = {
     [1] = {
         pattern_name = "quad_uranium",
-        pattern = nil,
 
-        addr_rsio = "bfac2715-c9d0-4890-8874-6b84257b875d",
-        addr_transposer = "25798479-84cf-4299-834b-791ccd2f2db7",
-        addr_reactor_chamber = "87736b6a-2eb3-4f58-9d6f-bcbaa8dde5c1",
+        addr_rsio = "185e3c6b-b187-4b69-9e53-e05e12ffdaa0",
+        addr_transposer = "7f80ab5e-a78d-4ef9-abf6-0f374425139f",
+        addr_reactor_chamber = "ed33ff55-73c0-44ea-af14-4a84744bd936",
 
-        side_reactor = sides.top,
+        side_reactor = sides.north,
         side_input = sides.west,
         side_output = sides.east,
-        side_rsio = sides.east,
+        side_rsio = sides.west,
         color_on = colors.green,
         color_error = colors.orange,
         color_start_en = colors.white,
@@ -42,20 +41,19 @@ local config = {
     },
     [2] = {
         pattern_name = "glowstone",
-        pattern = nil,
 
-        addr_rsio = "bfac2715-c9d0-4890-8874-6b84257b875d",
-        addr_transposer = "25798479-84cf-4299-834b-791ccd2f2db7",
-        addr_reactor_chamber = "87736b6a-2eb3-4f58-9d6f-bcbaa8dde5c1",
+        addr_rsio = "185e3c6b-b187-4b69-9e53-e05e12ffdaa0",
+        addr_transposer = "532c3e2a-2841-4a16-8ba9-fbd8109eaa72",
+        addr_reactor_chamber = "8a1823fe-5693-4917-ba97-bf184da9b2c3",
 
-        side_reactor = sides.top,
+        side_reactor = sides.north,
         side_input = sides.west,
         side_output = sides.east,
-        side_rsio = sides.east,
-        color_on = colors.green,
-        color_error = colors.orange,
-        color_start_en = colors.white,
-        color_stop_en = colors.red,
+        side_rsio = sides.west,
+        color_on = colors.lime,
+        color_error = colors.yellow,
+        color_start_en = colors.gray,
+        color_stop_en = colors.pink,
         allow_auto_start = false
     }
 }
@@ -65,6 +63,8 @@ local function reactor_init()
         rsio = nil,
         transposer = nil,
         reactor_chamber = nil,
+
+        pattern = nil,
 
         state = "OFF",
 
@@ -128,18 +128,18 @@ local error_msg = {
 
 -- Display
 local function info(no, msg)
-    print(string.format("%2d> %s\n", no, msg))
+    print(string.format("%2d> %s", no, msg))
 end
 
 local function err(no, msg)
-    error(string.format("%2d> %s\n", no, msg))
+    error(string.format("%2d> %s", no, msg))
 end
 
 -- Check reactor damage
 local function check_reactor_damage(no)
     local reactor_box = reactor[no].transposer.getAllStacks(config[no].side_reactor).getAll()
-    for i = 1, #config[no].pattern do
-        local pattern = config[no].pattern[i]
+    for i = 1, #reactor[no].pattern do
+        local pattern = reactor[no].pattern[i]
         for j = 1, #pattern.slot do
             local reactor_box_slot = reactor_box[pattern.slot[j] - 1]
             if reactor_box_slot.name == nil then
@@ -206,8 +206,8 @@ local function update_reactor_item(no)
     end
 
     local reactor_box = reactor[no].transposer.getAllStacks(config[no].side_reactor).getAll()
-    for i = 1, #config[no].pattern do
-        local pattern = config[no].pattern[i]
+    for i = 1, #reactor[no].pattern do
+        local pattern = reactor[no].pattern[i]
         for j = 1, #pattern.slot do
             local reactor_slot = pattern.slot[j]
             local reactor_box_slot = reactor_box[reactor_slot - 1]  -- inventory index start with 0
@@ -240,7 +240,7 @@ end
 
 -- Reactor control
 local function start_reactor(no)
-    if reactor[no].reactor_chamber.getHeat() > config[no].pattern.overheat then
+    if reactor[no].reactor_chamber.getHeat() > reactor[no].pattern.overheat then
         return 8
     end
     reactor[no].reactor_chamber.setActive(true)
@@ -304,7 +304,7 @@ local function watchdog_handler()
             reactor[i].stop_en = true
         end
 
-        if reactor[i].heat >= config[i].pattern.overheat then
+        if reactor[i].heat >= reactor[i].pattern.overheat then
             info(i, "WDT detected reactor overheat.")
             reactor[i].stop_en = true
         end
@@ -362,12 +362,15 @@ local function key_down_handler(eventName, keyboardAddress, char, code, playerNa
 end
 
 local function redstone_changed_handler(eventName, address, side, oldValue, newValue, color)
-    for i = 1, #reactor do
-        if address == config[i].addr_rsio do
+    for i = 1, #config do
+        if address == config[i].addr_rsio then
             if side == config[i].side_rsio and color == config[i].color_stop_en and newValue > 15 then
+                info(i, "Stop signal received.")
                 reactor[i].stop_en = true
-            if side == config[i].rsio_side and color == config[i].color_start_en and newValue > 15 then
+            end
+            if side == config[i].side_rsio and color == config[i].color_start_en and newValue > 15 then
                 if reactor[i].state == "OFF" then
+                    info(i, "Start signal received.")
                     reactor[i].start_en = true
                 end
             end
@@ -413,7 +416,7 @@ local reactor_control_fsm = {
             end
             ret = start_reactor(no)
             if ret ~= 0 then
-                display_error(no, ret)
+                info(no, error_msg[ret])
                 return "OFF"
             end
             return "ON"
@@ -422,7 +425,7 @@ local reactor_control_fsm = {
         function(no)
             local ret = check_reactor_damage(no)
             if ret ~= 0 then
-                display_error(no, ret)
+                info(no, error_msg[ret])
                 stop_reactor(no)
                 return "START"
             end
@@ -440,10 +443,10 @@ local reactor_control_fsm = {
 
 -- Component check
 local function init_component(no)
-    info((no, "Self-checking reactor %2d...\n", i))
+    info(no, "Self-checking reactor...")
     
     reactor[no] = reactor_init()
-    reactor[no].pattern = nr_pattern[reactor[no].pattern_name]
+    reactor[no].pattern = nr_pattern[config[no].pattern_name]
     if reactor[no].pattern == nil then
         err(no, "Invalid pattern name.")
     end
@@ -454,19 +457,19 @@ local function init_component(no)
 
     if reactor[no].rsio == nil then
         err(no, "Cannot access redstone I/O.")
-    elseif reactor[no].rsio.getBundledInput(config[no].side_rsio, config[i].color_start_en) > 15 then
+    elseif reactor[no].rsio.getBundledInput(config[no].side_rsio, config[no].color_start_en) > 15 then
         info(no, "Start signal is high.")
-    elseif rsio_control.getBundledInput(config[no].side_rsio, config[i].color_stop_en) > 15 then
+    elseif reactor[no].rsio.getBundledInput(config[no].side_rsio, config[no].color_stop_en) > 15 then
         info(no, "SCRAM signal is high.")
     end
 
     if reactor[no].transposer == nil then
         err(no, "Cannot access transposer.")
-    elseif reactor[no].transposer.getInventoryName(config[i].side_reactor) ~= "blockReactorChamber" then
+    elseif reactor[no].transposer.getInventoryName(config[no].side_reactor) ~= "blockReactorChamber" then
         err(no, "Transposer cannot access reactor chamber.")
-    elseif reactor[no].transposer.getInventoryName(config[i].side_input) == nil then
+    elseif reactor[no].transposer.getInventoryName(config[no].side_input) == nil then
         err(no, "Transposer cannot access input inventory.")
-    elseif reactor[no].transposer.getInventoryName(config[i].side_output) == nil then
+    elseif reactor[no].transposer.getInventoryName(config[no].side_output) == nil then
         err(no, "Transposer cannot access output inventory.")
     end
 
@@ -502,12 +505,12 @@ local function init()
     end
 end
 
-local function off_light()
+local function light_control(level)
     for i = 1, #reactor do
-        rsio.setBundledOutput(config[i].side_rsio, config[i].color_start_en, 0)
-        rsio.setBundledOutput(config[i].side_rsio, config[i].color_error, 0)
-        rsio.setBundledOutput(config[i].side_rsio, config[i].color_on, 0)
-        rsio.setBundledOutput(config[i].side_rsio, config[i].color_stop_en, 0)
+        reactor[i].rsio.setBundledOutput(config[i].side_rsio, config[i].color_start_en, level)
+        reactor[i].rsio.setBundledOutput(config[i].side_rsio, config[i].color_error, level)
+        reactor[i].rsio.setBundledOutput(config[i].side_rsio, config[i].color_on, level)
+        reactor[i].rsio.setBundledOutput(config[i].side_rsio, config[i].color_stop_en, level)
     end
 end
 
@@ -517,8 +520,9 @@ local function main()
     print("Starting...")
     init()
 
-    os.execute("cls")
     register_event()
+    pcall(light_control, 15)
+    os.execute("cls")
     print_header()
 
     while not exit_signal do
@@ -544,7 +548,7 @@ local function main()
 
     print("Exiting...")
     unregister_event()
-    pcall(off_light)
+    pcall(light_control, 0)
 end
 
 main()
