@@ -9,9 +9,9 @@ local nr_pattern = require("nr_pattern")
 
 -- Reactor configuration
 local global_config = {
-    addr_buffer = "xx",
-    addr_buffer_inv = "xx",
-    side_buffer = sides.top,
+    addr_buffer = "f3851c84-71d2-43f0-bfbc-e953a6fd6d3c",
+    addr_buffer_inv = "cdb345dc-4855-4fe1-a781-10a24c69ab12",
+    side_buffer = sides.bottom,
 
     buffer_level = 0.9,
 
@@ -83,9 +83,10 @@ end
 -- Reactor structure
 local reactor = {}
 local buffer = {
+    obj = nil,
+    inv = nil,
+    
     enable = false,
-    machine = nil,
-    machine_inv = nil,
     EUStored = 0,
     EUmax = 0,
     EUNetChange = 0,
@@ -267,7 +268,7 @@ local function get_buffer_reading()
     buffer.EUStored = 0
     buffer.EUmax = 0
 
-    local machine_slot = buffer.machine_inv.getAllStacks()
+    local machine_slot = buffer.inv.getAllStacks()
     local differenceCharge = 0
     for i = 0, #machine_slot do
         if machine_slot[i] then
@@ -275,10 +276,10 @@ local function get_buffer_reading()
             buffer.EUmax = buffer.EUmax + machine_slot[i].maxCharge
         end
     end
-    buffer.EUStored = buffer.EUStored + buffer.machine.getEUStored()
-    buffer.EUmax = buffer.EUmax + buffer.machine.getEUMaxStored()
+    buffer.EUStored = buffer.EUStored + buffer.obj.getEUStored()
+    buffer.EUmax = buffer.EUmax + buffer.obj.getEUMaxStored()
     buffer.EUPrec = buffer.EUStored / buffer.EUmax
-    buffer.EUNetChange = buffer.machine.getAverageElectricityInput() - buffer.machine.getAverageElectricityOutput()
+    buffer.EUNetChange = buffer.obj.getAverageElectricityInput() - buffer.obj.getAverageElectricityOutput()
 end
 
 local function auto_start()
@@ -333,7 +334,11 @@ local function print_header()
         term.write(string.format("%-8d|%-8s|%7.1f%%|%19dEU/t\n", i, reactor[i].state, reactor[i].heatPrec * 100, reactor[i].EUOutput))
     end
     term.write("--------+--------+--------+-----------------------\n")
-    term.write(string.format("%15dEU|%7.1f%%|%19dEU/t\n", buffer.EUStored, buffer.EUPrec * 100, buffer.EUNetChange))
+    if buffer.enable then
+        term.write(string.format("%15dEU|%7.1f%%|%19dEU/t\n", buffer.EUStored, buffer.EUPrec * 100, buffer.EUNetChange))
+    else
+        term.write("buffer inactive  |        |                       \n")
+    end
     term.write("-----------------+--------+----Kerel The Top UwU--\n")
 end
 
@@ -374,7 +379,6 @@ local function redstone_changed_handler(eventName, address, side, oldValue, newV
                     reactor[i].start_en = true
                 end
             end
-            break
         end
     end
 end
@@ -433,7 +437,7 @@ local reactor_control_fsm = {
         end,
     ERROR = 
         function(no)
-            local elapsed_second = (os.time() - reactor[no].error_time)*0.014  -- convert to second
+            local elapsed_second = (os.time() - reactor[no].error_time) * 0.014  -- convert to second
             if elapsed_second >= global_config.error_retry_interval then
                 return "START"
             end
@@ -488,19 +492,19 @@ local function init()
         init_component(i)
     end
 
-    buffer.machine = component.proxy(global_config.addr_buffer)
-    buffer.machine_inv = component.proxy(global_config.addr_buffer_inv)
-    if buffer.machine == nil then
-        print("Cannot access battery machine, buffer disabled.")
+    buffer.obj = component.proxy(global_config.addr_buffer)
+    buffer.inv = component.proxy(global_config.addr_buffer_inv)
+    if buffer.obj == nil then
+        print("Cannot access battery buffer, buffer disabled.")
         buffer.enable = false
-    elseif buffer.machine_inv == nil then
-        print("Cannot access battery machine inventory, buffer disabled.")
+    elseif buffer.inv == nil then
+        print("Cannot access battery buffer inventory, buffer disabled.")
         buffer.enable = false
-    elseif buffer.machine_inv.getInventoryName(global_config.side_buffer) == nil then
-        print("Cannot access battery machine inventory, buffer disabled.")
+    elseif buffer.inv.getInventoryName(global_config.side_buffer) == nil then
+        print("Cannot access battery buffer inventory, buffer disabled.")
         buffer.enable = false
     else
-        print("Battery machine detected, buffer enabled.")
+        print("Battery buffer detected, buffer enabled.")
         buffer.enable = true
     end
 end
@@ -525,7 +529,7 @@ local function main()
     os.execute("cls")
     print_header()
 
-    while not exit_signal do
+    while true do
         local status = false
         for i = 1, #reactor do
             status, ret = pcall(reactor_control_fsm[reactor[i].state], i)
@@ -542,6 +546,9 @@ local function main()
                 reactor[i].start_en = false -- clear start signal
                 reactor[i].state = "OFF"
             end
+        end
+        if exit_signal then
+            break
         end
         os.sleep(0.2)
     end
