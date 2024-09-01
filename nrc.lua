@@ -307,10 +307,9 @@ local function watchdog_handler()
     for i = 1, #reactor do
         if not pcall(get_reactor_reading, i) then
             info(i, "WDT detected reactor abnormal.")
-            reactor[i].stop_en = true
         end
 
-        if reactor[i].heat >= reactor[i].pattern.overheat then
+        if reactor[i].state == "ON" and reactor[i].heat >= reactor[i].pattern.overheat then
             info(i, "WDT detected reactor overheat.")
             reactor[i].stop_en = true
         end
@@ -376,7 +375,7 @@ local function key_down_handler(eventName, keyboardAddress, char, code, playerNa
             reactor[i].stop_en = true
         end
         exit_signal = true
-    elseif char == "a" then
+    elseif code == 0x20 then
         buffer.auto_start = not buffer.auto_start
         if buffer.auto_start then
             info(0, "Auto control enabled.")
