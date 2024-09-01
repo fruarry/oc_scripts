@@ -14,7 +14,7 @@ local global_config = {
     side_buffer = sides.bottom,
 
     buffer_off_level = 0.9,
-    buffer_on_level = 0.1
+    buffer_on_level = 0.1,
 
     error_retry_interval = 5,
 
@@ -169,63 +169,65 @@ local function update_reactor_item(no)
         end
     end
 
-    local function try_output(slot)
-        -- Transfer index start with 0
-        return reactor[no].transposer.transferItem(
-            config[no].side_reactor, config[no].side_output, 1, slot)
-    end
-
     local missing_item_list = {}
-    local function try_input(name, slot)
-        -- Get input item slot
-        local input_slot = -1
-        if input_item_list[name] ~= nil then
-            local item_list_slot = input_item_list[name]
-            while #item_list_slot > 0 do
-                local slot = item_list_slot[#item_list_slot]
-                if input_box[slot].size > 0 then
-                    input_slot = slot
-                    input_box[slot].size = input_box[slot].size - 1
-                    break
-                else
-                    item_list_slot[#item_list_slot] = nil
-                end
-            end
-            if #item_list_slot == 0 then
-                input_item_list[name] = nil
-            end
-        end
-
-        -- Input not available
-        if input_slot == -1 then
-            append(missing_item_list, name, slot)
-            return 0
-        end
-
-        -- Try to transfer
-        -- transfer index start with 1
-        return reactor[no].transposer.transferItem(
-            config[no].side_input, config[no].side_reactor, 1, input_slot + 1, slot)
-    end
-
     local reactor_box = reactor[no].transposer.getAllStacks(config[no].side_reactor).getAll()
     for i = 1, #reactor[no].pattern.resource do
         local resource = reactor[no].pattern.resource[i]
         for j = 1, #resource.slot do
             local reactor_slot = resource.slot[j]
             local reactor_box_slot = reactor_box[reactor_slot - 1]  -- inventory index start with 0
+            local need_output = false
+            local need_input = false
             if reactor_box_slot.name == nil then
-                try_input(resource.name, reactor_slot)
+                need_input = true
             elseif reactor_box_slot.name ~= resource.name then
-                if try_output(reactor_slot) == 0 then
-                    return 1  -- error code
-                end
-                try_input(resource.name, reactor_slot)
+                need_output = true
+                need_input = true
             elseif resource.damage ~= -1 and reactor_box_slot.damage >= resource.damage then
-                if try_output(reactor_slot) == 0 then
+                need_output = true
+                need_input = true
+            end
+
+            -- Transfer
+            local transfer_ret = 0
+            if need_output then
+                -- Transfer output
+                transfer_ret = reactor[no].transposer.transferItem(
+                    config[no].side_reactor, config[no].side_output, 1, reactor_box_slot)
+                if transfer_ret == 0 then
                     return 1  -- error code
                 end
-                try_input(resource.name, reactor_slot)
+            end
+            if need_input then
+                -- Get input item slot
+                local input_slot = -1
+                if input_item_list[resource.name] ~= nil then
+                    local item_list_slot = input_item_list[resource.name]
+                    while #item_list_slot > 0 do
+                        local slot = item_list_slot[#item_list_slot]
+                        if input_box[slot].size > 0 then
+                            input_slot = slot
+                            input_box[slot].size = input_box[slot].size - 1
+                            break
+                        else
+                            item_list_slot[#item_list_slot] = nil
+                        end
+                    end
+                    if #item_list_slot == 0 then
+                        input_item_list[resource.name] = nil
+                    end
+                end
+
+                if input_slot == -1 then
+                    append(missing_item_list, resource.name, reactor_slot)
+                else
+                    -- Transfer input
+                    transfer_ret = reactor[no].transposer.transferItem(
+                        config[no].side_input, config[no].side_reactor, 1, input_slot + 1, reactor_slot)
+                    if transfer_ret == 0 then
+                       return 3  -- error code
+                    end
+                end
             end
         end
     end
@@ -350,7 +352,7 @@ local function print_header()
         buffer_state = "disable"
     end
     term.write(string.format("%-8s|%5.fMEU|%7.1f%%|%19.fEU/t\n", buffer_state, buffer.EUStored / 1e6, buffer.EUPrec * 100, buffer.EUNetChange), false)
-    term.write("--------+--------+--------+----Kerel The Top UwU--\n", false)
+    term.write("--------+--------+--------+---Kerel The Top UwU---\n", false)
 end
 
 local function status_handler()
