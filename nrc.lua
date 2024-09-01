@@ -193,7 +193,7 @@ local function update_reactor_item(no)
             if need_output then
                 -- Transfer output
                 transfer_ret = reactor[no].transposer.transferItem(
-                    config[no].side_reactor, config[no].side_output, 1, reactor_box_slot)
+                    config[no].side_reactor, config[no].side_output, 1, reactor_slot)
                 if transfer_ret == 0 then
                     return 1  -- error code
                 end
@@ -343,14 +343,14 @@ local function print_header()
     local buffer_state
     if buffer.enable then
         if buffer.auto_start then
-            buffer_state = "auto"
+            buffer_state = "AUTO"
         else
-            buffer_state = "manual"
+            buffer_state = "MANUAL"
         end
     else
-        buffer_state = "disable"
+        buffer_state = "DISABLE"
     end
-    term.write(string.format("%-8s|%5.fMEU|%7.1f%%|%19.fEU/t\n", buffer_state, buffer.EUStored / 1e6, buffer.EUPrec * 100, buffer.EUNetChange), false)
+    term.write(string.format("%-8s|%8s|%7.1f%%|%10.fk|%9.fk/t\n", "buffer", buffer_state, buffer.EUPrec*100, buffer.EUStored/1e3, buffer.EUNetChange/1e3), false)
     term.write("--------+--------+--------+---Kerel The Top UwU---\n", false)
 end
 
@@ -557,7 +557,7 @@ local function main()
             local status, ret = pcall(reactor_control_fsm[reactor[i].state], i)
             if not status then
                 info(i, ret)
-                info(i, "Unexpected error. Please check nuclear reactor.")
+                info(i, "Unexpected error. Please check reactor.")
                 reactor[i].stop_en = true
             else
                 reactor[i].state = ret
