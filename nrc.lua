@@ -13,7 +13,8 @@ local global_config = {
     addr_buffer_inv = "92032b5f-0de2-423d-b637-b93083313824",
     side_buffer = sides.bottom,
 
-    buffer_level = 0.9,
+    buffer_off_level = 0.9,
+    buffer_on_level = 0.1
 
     error_retry_interval = 5,
 
@@ -89,7 +90,7 @@ local buffer = {
     enable = false,
     auto_start = false,
     EUStored = 0,
-    EUmax = 0,
+    EUmax = 100,
     EUNetChange = 0,
     EUPrec = 0
 }
@@ -271,7 +272,7 @@ local function get_buffer_reading()
 
     local machine_slot = buffer.inv.getAllStacks(global_config.side_buffer).getAll()
     for i = 0, #machine_slot do
-        if machine_slot[i] then
+        if machine_slot[i].charge then
             buffer.EUStored = buffer.EUStored + machine_slot[i].charge
             buffer.EUmax = buffer.EUmax + machine_slot[i].maxCharge
         end
@@ -285,6 +286,7 @@ end
 local function auto_start()
     for i = 1, #reactor do
         if config[i].allow_auto_start and reactor[i].state == 'OFF' then
+            info(i, "Auto starting...")
             reactor[i].start_en = true
         end
     end
@@ -293,6 +295,7 @@ end
 local function auto_stop()
     for i = 1, #reactor do
         if config[i].allow_auto_start and reactor[i].state == 'ON' then
+            info(i, "Auto stopping...")
             reactor[i].stop_en = true
         end
     end
@@ -318,9 +321,9 @@ local function watchdog_handler()
 
     if buffer.enable and pcall(get_buffer_reading) then
         if buffer.auto_start then
-            if buffer.EUPrec < global_config.buffer_level then
+            if buffer.EUPrec < global_config.buffer_on_level then
                 pcall(auto_start)
-            else
+            elseif buffer.EUPrec > global_config.buffer_off_level then
                 pcall(auto_stop)
             end
         end
@@ -329,18 +332,25 @@ end
 
 local function print_header()
     term.setCursor(1, 1)
-    term.write("reactor |state   |heat%   |energy                 \n", false)
+    term.write("reactor |state   |heat/EU%|energy                 \n", false)
     term.write("--------+--------+--------+-----------------------\n", false)
     for i = 1, #reactor do
         term.write(string.format("%-8d|%8s|%7.1f%%|%19.fEU/t\n", i, reactor[i].state, reactor[i].heatPrec * 100, reactor[i].EUOutput), false)
     end
     term.write("--------+--------+--------+-----------------------\n", false)
+    
+    local buffer_state
     if buffer.enable then
-        term.write(string.format("%14.fMEU|%7.1f%%|%19.fEU/t\n", buffer.EUStored / 1e6, buffer.EUPrec * 100, buffer.EUNetChange), false)
+        if buffer.auto_start then
+            buffer_state = "auto"
+        else
+            buffer_state = "manual"
+        end
     else
-        term.write("buffer inactive  |        |                       \n", false)
+        buffer_state = "disable"
     end
-    term.write("-----------------+--------+----Kerel The Top UwU--\n", false)
+    term.write(string.format("%-8s|%5.fMEU|%7.1f%%|%19.fEU/t\n", buffer_state, buffer.EUStored / 1e6, buffer.EUPrec * 100, buffer.EUNetChange), false)
+    term.write("--------+--------+--------+----Kerel The Top UwU--\n", false)
 end
 
 local function status_handler()
@@ -366,6 +376,11 @@ local function key_down_handler(eventName, keyboardAddress, char, code, playerNa
         exit_signal = true
     elseif char == "a" then
         buffer.auto_start = not buffer.auto_start
+        if buffer.auto_start then
+            info(0, "Auto control enabled.")
+        else
+            info(0, "Auto control disabled.")
+        end
     end
 end
 
@@ -506,8 +521,8 @@ local function init()
         print("Cannot access battery buffer inventory, buffer disabled.")
         buffer.enable = false
     else
-        print("Battery buffer detected, auto start enabled.")
-        buffer.auto_start = true
+        print("Battery buffer detected, auto control can be enabled.")
+        buffer.auto_start = false
         buffer.enable = true
     end
 end
