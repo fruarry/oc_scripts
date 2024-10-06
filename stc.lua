@@ -9,11 +9,28 @@ local transposer = component.transposer
 local coolant_tank_side = sides.east
 local input_side = sides.bottom
 
+local coolant_name = "ic2coolant"
 local heat_threshold = 50000
 
 -- transfer coolant from tank to fluid input hatch
 function transfer_coolant(amount)
+    local fluid_info = transposer.getFluidInTankInSlot(coolant_tank_side, 1)
+    -- example fluid information
+    -- {}
+    if fluid_info.name ~= coolant_name then
+        print(string.format("Wrong fluid type, expected '%s' but detected '%s'.", coolant_name, fluid_info.name)
+        return false
+    end
+
+    if fluid_info.level < amount then
+        print("Insufficient coolant.")
+    end
+
     local status, xfer_amount = transposer.transferFluid(coolant_tank_side, input_side, amount)
+    if status then
+        return true
+    else
+	return false
 end
 
 -- example sensor information of solar tower
@@ -34,7 +51,7 @@ function main()
 
         -- coolant transfer when internal heat is higher than heat_threshold
         if heat > heat_threshold then
-            transfer_coolant(heat - heat_threshold)
+            local status = transfer_coolant(heat - heat_threshold)
         end
 
         ::continue::
