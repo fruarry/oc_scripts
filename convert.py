@@ -1,6 +1,6 @@
 import subprocess
 
-img_folder = "loona"
+img_folder = "special"
 
 def get_images():
     import os
@@ -14,7 +14,7 @@ def get_images():
 
     # Print the filenames and extensions
     for name, ext in file_info:
-        if ext == ".JPEG":
+        if ext == ".jpg" or ext == ".png":
             img_list.append((name, ext))
             print(f"Filename: {name}, Extension: {ext}")
     return img_list
@@ -43,15 +43,9 @@ def convert_images(img_list):
     for file_name, extension in img_list:
         w, h = get_resize(f'{img_folder}/{file_name}{extension}')
         print(f"convert {img_folder}/{file_name}{extension} to {img_folder}/{file_name}.ctif")
-        subprocess.call(f"java -jar CTIFConverter-0.2.2.jar -m oc-tier3 -W {w} -H {h} -P {img_folder}/{file_name}.png -o {img_folder}/{file_name}.ctif {img_folder}/{file_name}{extension}")
+        subprocess.call(f"java -jar CTIFConverter-0.2.2.jar -m oc-tier3 -W {w} -H {h} -o {img_folder}/{file_name}.ctif {img_folder}/{file_name}{extension}")
 
 def push_to_github(img_list):
-    # ================================
-    # write update list
-    with open(f'{img_folder}/update.log', 'w') as f:
-        for file_name, extension in img_list:
-            f.write(f'{file_name}.ctif\n')
-
     # ================================
     # push to remote
     from git import Repo
@@ -71,3 +65,9 @@ def push_to_github(img_list):
 img_list = get_images()
 
 convert_images(img_list)
+
+# ================================
+# write update list
+with open(f'{img_folder}/update.log', 'w') as f:
+    for file_name, extension in img_list:
+        f.write(f'{file_name}.ctif\n')

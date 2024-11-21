@@ -12,7 +12,6 @@ return {
         status_interval = 1,
         watchdog_interval = 0.2,
     },
-    
     reactor_config = {
         [1] = {
             pattern_name = "quad_uranium",
